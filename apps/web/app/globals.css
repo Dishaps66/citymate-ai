@@ -94,6 +94,96 @@ textarea {
   gap: 16px;
 }
 
+.form-grid,
+.result-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.result-card {
+  border: 1px solid var(--line);
+  background: rgba(21, 29, 35, 0.78);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.result-card p {
+  color: var(--muted);
+  margin: 8px 0;
+}
+
+.result-card small {
+  color: var(--muted);
+}
+
+.location-badge {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(45, 212, 191, 0.35);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(45, 212, 191, 0.08);
+  color: var(--muted);
+}
+
+.location-badge strong {
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+
+.warning-box {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(245, 158, 11, 0.09);
+  color: #f8d38d;
+}
+
+.map-preview {
+  display: grid;
+  min-height: 220px;
+  place-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0b1015;
+  color: var(--muted);
+  overflow: hidden;
+}
+
+.map-preview svg {
+  width: 100%;
+  height: 240px;
+}
+
+.json-output {
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #0b1015;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 @media (min-width: 860px) {
   .grid.cols-3 {
     grid-template-columns: repeat(3, minmax(0, 1fr));

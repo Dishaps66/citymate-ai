@@ -8,6 +8,13 @@ export function apiBaseUrl() {
   return value.replace(/\/$/, "");
 }
 
+async function parseApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
+  if (!response.ok) {
+    throw new Error(`CityMate API returned ${response.status}. Check backend URL and CORS settings.`);
+  }
+  return (await response.json()) as ApiResponse<T>;
+}
+
 export async function postApi<T>(path: string, body: Record<string, unknown>): Promise<ApiResponse<T>> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 20000);
@@ -18,10 +25,36 @@ export async function postApi<T>(path: string, body: Record<string, unknown>): P
       body: JSON.stringify(body),
       signal: controller.signal
     });
-    if (!response.ok) {
-      throw new Error(`CityMate API returned ${response.status}`);
+    return await parseApiResponse<T>(response);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("CityMate API timed out. Try a smaller area or check whether the backend is awake.");
     }
-    return (await response.json()) as ApiResponse<T>;
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+export async function getApi<T>(path: string, query?: Record<string, string | number | undefined>): Promise<ApiResponse<T>> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 20000);
+  const params = new URLSearchParams();
+  Object.entries(query ?? {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  });
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  try {
+    const response = await fetch(`${apiBaseUrl()}${path}${suffix}`, {
+      method: "GET",
+      signal: controller.signal
+    });
+    return await parseApiResponse<T>(response);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("CityMate API timed out. Try again after the backend finishes waking up.");
+    }
+    throw error;
   } finally {
     window.clearTimeout(timeout);
   }
