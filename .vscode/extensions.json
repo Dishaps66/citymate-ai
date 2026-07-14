@@ -1,0 +1,15 @@
+{
+    "recommendations": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.debugpy",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss",
+        "eamodio.gitlens",
+        "rangav.vscode-thunder-client",
+        "mikestead.dotenv",
+        "gruntfuggly.todo-tree",
+        "usernamehw.errorlens"
+    ]
+}

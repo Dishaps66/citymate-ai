@@ -1,0 +1,20 @@
+{
+  "name": "citymate-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Evidence-first multi-agent city travel, relocation, accommodation, budgeting, and urban decision support platform.",
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "dev": "pnpm --filter @citymate/web dev",
+    "build": "pnpm --filter @citymate/web build",
+    "typecheck": "pnpm --filter @citymate/web typecheck",
+    "lint": "pnpm --filter @citymate/web lint",
+    "test": "pnpm --filter @citymate/web test",
+    "api:dev": "powershell -ExecutionPolicy Bypass -File scripts/dev-api.ps1",
+    "api:test": "cd apps/api && .venv/Scripts/python.exe -m pytest",
+    "check": "pnpm typecheck && pnpm lint && pnpm test"
+  },
+  "devDependencies": {
+    "typescript": "5.8.3"
+  }
+}
