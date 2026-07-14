@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { Crosshair, MapPin, Play, RotateCcw, Search, ShieldAlert } from "lucide-react";
+import { Copy, Crosshair, Download, MapPin, Play, RotateCcw, Save, Search, ShieldAlert, Volume2 } from "lucide-react";
 import { getApi, postApi } from "@/lib/api";
 import { getFeature } from "@/lib/features";
 import type { ApiResponse } from "@/types/api";
@@ -46,6 +46,35 @@ type RouteRecord = {
 };
 
 type QueryMode = "travel" | "places" | "emergency" | "weather" | "accommodation" | "budget" | "message" | "json";
+
+type BrowserSpeechRecognition = {
+  lang: string;
+  onresult: (event: { results: { [index: number]: { [index: number]: { transcript: string } } } }) => void;
+  start: () => void;
+};
+
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+
+type QueryContext = {
+  city: string;
+  language: string;
+  lifestyle: string;
+  budget: number;
+  stayPreference: string;
+  sharingType: string;
+  genderPreference: string;
+  amenities: string[];
+  typedLocation?: string;
+};
+
+const cities = ["Bengaluru", "Hyderabad", "Chennai", "Pune", "Mumbai", "Delhi", "Mysuru"];
+const languages = ["English", "Hindi", "Kannada", "Telugu", "Tamil"];
+const lifestyles = ["Affordable", "Standard", "Comfort", "Premium"];
+const stayPreferences = ["PG", "Hostel", "Room", "Shared flat", "Full flat", "Coliving"];
+const sharingTypes = ["Single", "Double sharing", "Triple sharing", "Any sharing"];
+const genderPreferences = ["Any", "Women only", "Men only", "Family friendly"];
+const amenities = ["WiFi", "Meals", "Laundry", "Power backup", "Parking", "Security", "Attached bathroom"];
+const travelModes = ["Road route", "Walking context", "Cycling context", "Public transport availability"];
 
 const samplePayloads: Record<string, Record<string, unknown>> = {
   "/api/v1/chat": { message: "Help me relocate near Electronic City, Bengaluru within INR 18000 rent.", evidence_mode: true },
@@ -164,7 +193,121 @@ function LocationBadge({ label, value }: { label: string; value?: string }) {
   );
 }
 
-function ResultView({ response, mode, typedLocation }: { response?: ApiResponse<unknown>; mode: QueryMode; typedLocation?: string }) {
+function OptionChips({
+  items,
+  selected,
+  onChange,
+  multi = false
+}: {
+  items: string[];
+  selected: string | string[];
+  onChange: (value: string | string[]) => void;
+  multi?: boolean;
+}) {
+  const selectedList = Array.isArray(selected) ? selected : [selected];
+  return (
+    <div className="chip-row">
+      {items.map((item) => {
+        const active = selectedList.includes(item);
+        return (
+          <button
+            className={`chip${active ? " active" : ""}`}
+            key={item}
+            type="button"
+            onClick={() => {
+              if (!multi) {
+                onChange(item);
+                return;
+              }
+              onChange(active ? selectedList.filter((current) => current !== item) : [...selectedList, item]);
+            }}
+          >
+            {item}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SelectionSummary({ context, mode }: { context: QueryContext; mode: QueryMode }) {
+  const focus =
+    mode === "travel"
+      ? "route distance, verified origin/destination, map geometry, and no invented bus numbers"
+      : mode === "accommodation"
+        ? "verified owner submissions, location fit, stay filters, and unavailable rent/contact fields"
+        : mode === "budget"
+          ? "salary split, stay budget, food, commute, savings, and emergency buffer"
+          : mode === "emergency"
+            ? "nearby hospitals, police, fire stations, pharmacies, and emergency-only categories"
+            : "source-backed city analysis with unavailable fields clearly marked";
+
+  return (
+    <section className="analysis-panel">
+      <div>
+        <p className="eyebrow">Selections used for analysis</p>
+        <h3>{context.city} · {context.language} · {context.lifestyle}</h3>
+      </div>
+      <div className="selection-grid">
+        <span>Budget: INR {context.budget.toLocaleString("en-IN")}</span>
+        <span>Stay: {context.stayPreference}</span>
+        <span>Sharing: {context.sharingType}</span>
+        <span>Preference: {context.genderPreference}</span>
+      </div>
+      {context.amenities.length ? <p style={{ color: "var(--muted)", margin: 0 }}>Amenities: {context.amenities.join(", ")}</p> : null}
+      <p style={{ color: "var(--muted)", margin: 0 }}>Analysis focus: {focus}.</p>
+    </section>
+  );
+}
+
+function ResultActions({ response, title, context }: { response?: ApiResponse<unknown>; title: string; context: QueryContext }) {
+  const [saved, setSaved] = useState<string>();
+
+  function serialized() {
+    return JSON.stringify({ title, context, response }, null, 2);
+  }
+
+  async function copy() {
+    if (!response) return;
+    await navigator.clipboard?.writeText(serialized());
+  }
+
+  function download() {
+    if (!response) return;
+    const blob = new Blob([serialized()], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${title.toLowerCase().replaceAll(" ", "-")}-${context.city.toLowerCase()}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function save() {
+    if (!response) return;
+    try {
+      await postApi("/api/v1/saved-plans", {
+        title,
+        city: context.city,
+        items: [context.typedLocation ?? context.city, ...response.warnings, ...response.unavailable_fields]
+      });
+      setSaved("Saved plan request sent.");
+    } catch (error) {
+      setSaved(error instanceof Error ? error.message : "Save failed.");
+    }
+  }
+
+  return (
+    <div className="action-row">
+      <button className="btn" disabled={!response} onClick={copy} type="button"><Copy size={16} /> Copy analysis</button>
+      <button className="btn" disabled={!response} onClick={download} type="button"><Download size={16} /> Download</button>
+      <button className="btn" disabled={!response} onClick={save} type="button"><Save size={16} /> Save plan</button>
+      {saved ? <span style={{ color: "var(--muted)" }}>{saved}</span> : null}
+    </div>
+  );
+}
+
+function ResultView({ response, mode, context }: { response?: ApiResponse<unknown>; mode: QueryMode; context: QueryContext }) {
   if (!response) {
     return <p style={{ color: "var(--muted)" }}>Run a query. CityMate will only show source-backed or calculated output here.</p>;
   }
@@ -219,7 +362,7 @@ function ResultView({ response, mode, typedLocation }: { response?: ApiResponse<
     return (
       <div className="result-stack">
         {warnings}
-        <LocationBadge label="Location typed" value={typedLocation} />
+        <LocationBadge label="Location typed" value={context.typedLocation} />
         <MiniMap places={places} />
         {places.length ? (
           <div className="grid">
@@ -246,7 +389,7 @@ function ResultView({ response, mode, typedLocation }: { response?: ApiResponse<
     return (
       <div className="result-stack">
         {warnings}
-        <LocationBadge label="Location typed" value={typedLocation} />
+        <LocationBadge label="Location typed" value={context.typedLocation} />
         <div className="grid cols-2">
           {Object.entries(data).slice(0, 8).map(([key, value]) => (
             <article className="result-card" key={key}>
@@ -264,13 +407,13 @@ function ResultView({ response, mode, typedLocation }: { response?: ApiResponse<
     return (
       <div className="result-stack">
         {warnings}
-        <LocationBadge label="Search location" value={typedLocation || String(response.query.city ?? "")} />
+        <LocationBadge label="Search location" value={context.typedLocation || String(response.query.city ?? "")} />
         {listings.length ? (
           <div className="grid">
             {listings.map((listing, index) => (
               <article className="result-card" key={String(listing.id ?? index)}>
                 <strong>{String(listing.title ?? "Verified accommodation listing")}</strong>
-                <p>{String(listing.city ?? typedLocation ?? "City unavailable")}</p>
+                <p>{String(listing.city ?? context.typedLocation ?? "City unavailable")}</p>
                 <small>{String(listing.listing_type ?? "listing")} · {String(listing.moderation_status ?? "verification required")}</small>
               </article>
             ))}
@@ -317,6 +460,7 @@ function ResultView({ response, mode, typedLocation }: { response?: ApiResponse<
 function FeatureForm({
   endpoint,
   mode,
+  setContext,
   setError,
   setLoading,
   setResponse,
@@ -325,12 +469,16 @@ function FeatureForm({
 }: {
   endpoint?: string;
   mode: QueryMode;
+  setContext: (value: QueryContext) => void;
   setError: (value?: string) => void;
   setLoading: (value: boolean) => void;
   setResponse: (value?: ApiResponse<unknown>) => void;
   setTypedLocation: (value?: string) => void;
   loading: boolean;
 }) {
+  const [city, setCity] = useState("Bengaluru");
+  const [language, setLanguage] = useState("English");
+  const [lifestyle, setLifestyle] = useState("Affordable");
   const [origin, setOrigin] = useState("MG Road Bengaluru");
   const [destination, setDestination] = useState("Electronic City Bengaluru");
   const [location, setLocation] = useState("Electronic City Bengaluru");
@@ -341,12 +489,31 @@ function FeatureForm({
   const [rent, setRent] = useState(18000);
   const [commute, setCommute] = useState(3000);
   const [food, setFood] = useState(9000);
+  const [stayPreference, setStayPreference] = useState("PG");
+  const [sharingType, setSharingType] = useState("Any sharing");
+  const [genderPreference, setGenderPreference] = useState("Any");
+  const [selectedAmenities, setSelectedAmenities] = useState<string[]>(["WiFi", "Security"]);
   const [payload, setPayload] = useState(JSON.stringify(samplePayloads[endpoint ?? ""] ?? {}, null, 2));
+
+  function currentContext(typed?: string): QueryContext {
+    return {
+      city,
+      language,
+      lifestyle,
+      budget: rent,
+      stayPreference,
+      sharingType,
+      genderPreference,
+      amenities: selectedAmenities,
+      typedLocation: typed
+    };
+  }
 
   async function execute(task: () => Promise<ApiResponse<unknown>>, typed?: string) {
     setLoading(true);
     setError(undefined);
     setTypedLocation(typed);
+    setContext(currentContext(typed));
     try {
       setResponse(await task());
     } catch (currentError) {
@@ -367,13 +534,15 @@ function FeatureForm({
 
   function submitTravel(event: FormEvent) {
     event.preventDefault();
-    void execute(() => postApi<RouteRecord | null>("/api/v1/routes", { origin, destination }), `${origin} to ${destination}`);
+    const scopedOrigin = `${origin}, ${city}, India`;
+    const scopedDestination = `${destination}, ${city}, India`;
+    void execute(() => postApi<RouteRecord | null>("/api/v1/routes", { origin: scopedOrigin, destination: scopedDestination }), `${origin} to ${destination}`);
   }
 
   function submitPlaces(event: FormEvent) {
     event.preventDefault();
     void execute(async () => {
-      const point = await geocodeFirst(location);
+      const point = await geocodeFirst(`${location}, ${city}, India`);
       return await postApi<PlaceRecord[]>(mode === "emergency" ? "/api/v1/emergency-search" : "/api/v1/nearby", {
         latitude: point.latitude,
         longitude: point.longitude,
@@ -386,7 +555,7 @@ function FeatureForm({
   function submitWeather(event: FormEvent) {
     event.preventDefault();
     void execute(async () => {
-      const point = await geocodeFirst(location);
+      const point = await geocodeFirst(`${location}, ${city}, India`);
       return await postApi<Record<string, unknown>>("/api/v1/weather", { latitude: point.latitude, longitude: point.longitude });
     }, location);
   }
@@ -394,19 +563,20 @@ function FeatureForm({
   function submitAccommodation(event: FormEvent) {
     event.preventDefault();
     void execute(async () => {
-      await geocodeFirst(location);
-      return await getApi<Record<string, unknown>[]>("/api/v1/listings", { city: location });
+      await geocodeFirst(`${location}, ${city}, India`);
+      return await getApi<Record<string, unknown>[]>("/api/v1/listings", { city: `${location}, ${city}` });
     }, location);
   }
 
   function submitMessage(event: FormEvent) {
     event.preventDefault();
-    void execute(() => postApi<Record<string, unknown>>(endpoint ?? "/api/v1/chat", { message, evidence_mode: true }), message);
+    const enriched = `${message}\nCity: ${city}. Language: ${language}. Lifestyle: ${lifestyle}. Budget: INR ${rent}. Stay preference: ${stayPreference}.`;
+    void execute(() => postApi<Record<string, unknown>>(endpoint ?? "/api/v1/chat", { message: enriched, city, evidence_mode: true }), message);
   }
 
   function submitBudget(event: FormEvent) {
     event.preventDefault();
-    void execute(() => postApi<Record<string, unknown>>("/api/v1/budget-plan", { monthly_income: income, rent, commute, food }));
+    void execute(() => postApi<Record<string, unknown>>("/api/v1/budget-plan", { monthly_income: income, rent, commute, food }), city);
   }
 
   function submitJson(event: FormEvent) {
@@ -421,9 +591,41 @@ function FeatureForm({
     </button>
   );
 
+  const sharedSelections = (
+    <div className="form-grid">
+      <div className="grid cols-2">
+        <label style={inputStyle()}>City<select className="input" value={city} onChange={(event) => setCity(event.target.value)}>{cities.map((item) => <option key={item}>{item}</option>)}</select></label>
+        <label style={inputStyle()}>Language<select className="input" value={language} onChange={(event) => setLanguage(event.target.value)}>{languages.map((item) => <option key={item}>{item}</option>)}</select></label>
+      </div>
+      <label style={inputStyle()}>Lifestyle selection<OptionChips items={lifestyles} selected={lifestyle} onChange={(value) => setLifestyle(String(value))} /></label>
+    </div>
+  );
+
+  function listen() {
+    const SpeechRecognition = (window as unknown as { SpeechRecognition?: BrowserSpeechRecognitionConstructor; webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor }).SpeechRecognition ||
+      (window as unknown as { SpeechRecognition?: BrowserSpeechRecognitionConstructor; webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor }).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setError("Speech recognition is not supported in this browser.");
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-IN";
+    recognition.onresult = (event) => {
+      setMessage(event.results[0][0].transcript);
+    };
+    recognition.start();
+  }
+
+  function speak() {
+    if (!("speechSynthesis" in window)) return;
+    speechSynthesis.speak(new SpeechSynthesisUtterance(message));
+  }
+
   if (mode === "travel") {
     return (
       <form className="form-grid" onSubmit={submitTravel}>
+        {sharedSelections}
+        <label style={inputStyle()}>Travel analysis options<OptionChips items={travelModes} selected={travelModes} multi onChange={() => undefined} /></label>
         <label style={inputStyle()}>Source typed by user<input className="input" value={origin} onChange={(event) => setOrigin(event.target.value)} required /></label>
         <label style={inputStyle()}>Destination typed by user<input className="input" value={destination} onChange={(event) => setDestination(event.target.value)} required /></label>
         {button}
@@ -435,6 +637,7 @@ function FeatureForm({
     const categories = mode === "emergency" ? ["hospital", "police", "fire_station", "pharmacy"] : ["hospital", "police", "fire_station", "pharmacy", "restaurant", "cafe", "tourism", "school", "college", "supermarket", "bank", "atm", "park", "bus_stop", "railway_station"];
     return (
       <form className="form-grid" onSubmit={submitPlaces}>
+        {sharedSelections}
         <label style={inputStyle()}>Location typed by user<input className="input" value={location} onChange={(event) => setLocation(event.target.value)} required /></label>
         <label style={inputStyle()}>Verified category<select className="input" value={category} onChange={(event) => setCategory(event.target.value)}>{categories.map((item) => <option key={item} value={item}>{item.replaceAll("_", " ")}</option>)}</select></label>
         <label style={inputStyle()}>Radius in metres<input className="input" type="number" min={100} max={5000} value={radius} onChange={(event) => setRadius(Number(event.target.value))} /></label>
@@ -446,7 +649,17 @@ function FeatureForm({
   if (mode === "weather" || mode === "accommodation") {
     return (
       <form className="form-grid" onSubmit={mode === "weather" ? submitWeather : submitAccommodation}>
+        {sharedSelections}
         <label style={inputStyle()}>{mode === "weather" ? "Weather location" : "PG/room search location"}<input className="input" value={location} onChange={(event) => setLocation(event.target.value)} required /></label>
+        {mode === "accommodation" ? (
+          <>
+            <label style={inputStyle()}>Stay type<OptionChips items={stayPreferences} selected={stayPreference} onChange={(value) => setStayPreference(String(value))} /></label>
+            <label style={inputStyle()}>Sharing<OptionChips items={sharingTypes} selected={sharingType} onChange={(value) => setSharingType(String(value))} /></label>
+            <label style={inputStyle()}>Gender preference<OptionChips items={genderPreferences} selected={genderPreference} onChange={(value) => setGenderPreference(String(value))} /></label>
+            <label style={inputStyle()}>Amenities<OptionChips items={amenities} selected={selectedAmenities} multi onChange={(value) => setSelectedAmenities(value as string[])} /></label>
+            <label style={inputStyle()}>Max monthly budget<input className="input" type="number" min={0} value={rent} onChange={(event) => setRent(Number(event.target.value))} /></label>
+          </>
+        ) : null}
         {mode === "accommodation" ? <p style={{ color: "var(--muted)" }}>Searches verified owner-submitted listings. If none exist, CityMate shows an unavailable state instead of fake PGs, hotels, or rent values.</p> : null}
         {button}
       </form>
@@ -456,7 +669,12 @@ function FeatureForm({
   if (mode === "message") {
     return (
       <form className="form-grid" onSubmit={submitMessage}>
+        {sharedSelections}
         <label style={inputStyle()}>Your city question<textarea className="input" style={{ minHeight: 150, paddingTop: 12 }} value={message} onChange={(event) => setMessage(event.target.value)} required /></label>
+        <div className="action-row">
+          <button className="btn" type="button" onClick={listen}>Speak</button>
+          <button className="btn" type="button" onClick={speak}><Volume2 size={16} /> Read aloud</button>
+        </div>
         {button}
       </form>
     );
@@ -465,6 +683,7 @@ function FeatureForm({
   if (mode === "budget") {
     return (
       <form className="form-grid" onSubmit={submitBudget}>
+        {sharedSelections}
         <label style={inputStyle()}>Monthly income<input className="input" type="number" min={0} value={income} onChange={(event) => setIncome(Number(event.target.value))} /></label>
         <label style={inputStyle()}>Rent or stay budget<input className="input" type="number" min={0} value={rent} onChange={(event) => setRent(Number(event.target.value))} /></label>
         <label style={inputStyle()}>Commute estimate<input className="input" type="number" min={0} value={commute} onChange={(event) => setCommute(Number(event.target.value))} /></label>
@@ -487,6 +706,16 @@ export function FeaturePage({ slug }: { slug: string }) {
   const mode = modeForSlug(slug);
   const [response, setResponse] = useState<ApiResponse<unknown>>();
   const [typedLocation, setTypedLocation] = useState<string>();
+  const [context, setContext] = useState<QueryContext>({
+    city: "Bengaluru",
+    language: "English",
+    lifestyle: "Affordable",
+    budget: 18000,
+    stayPreference: "PG",
+    sharingType: "Any sharing",
+    genderPreference: "Any",
+    amenities: ["WiFi", "Security"]
+  });
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
 
@@ -525,6 +754,7 @@ export function FeaturePage({ slug }: { slug: string }) {
                 endpoint={feature.endpoint}
                 mode={mode}
                 loading={loading}
+                setContext={setContext}
                 setError={setError}
                 setLoading={setLoading}
                 setResponse={setResponse}
@@ -544,7 +774,10 @@ export function FeaturePage({ slug }: { slug: string }) {
 
         <section className="panel" style={{ padding: 18, overflow: "auto" }}>
           <h2>Result</h2>
-          <ResultView response={response} mode={mode} typedLocation={typedLocation} />
+          <SelectionSummary context={{ ...context, typedLocation }} mode={mode} />
+          <div style={{ height: 14 }} />
+          <ResultView response={response} mode={mode} context={{ ...context, typedLocation }} />
+          <ResultActions response={response} title={feature.title} context={{ ...context, typedLocation }} />
         </section>
       </div>
 
