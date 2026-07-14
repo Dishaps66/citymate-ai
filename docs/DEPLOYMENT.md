@@ -76,6 +76,7 @@ Start command: uvicorn api.main:app --host 0.0.0.0 --port $PORT
 Backend environment variables:
 
 ```env
+PYTHON_VERSION=3.12.13
 APP_ENV=production
 APP_VERSION=1.0.0
 FRONTEND_ORIGINS=https://your-frontend.vercel.app
