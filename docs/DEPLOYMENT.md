@@ -73,6 +73,8 @@ Build command: pip install -r requirements.txt
 Start command: uvicorn api.main:app --host 0.0.0.0 --port $PORT
 ```
 
+Render currently defaults new Python services to Python 3.14. CityMate pins Python 3.12 with `.python-version`; also set `PYTHON_VERSION=3.12.13` in Render for the clearest override.
+
 Backend environment variables:
 
 ```env
